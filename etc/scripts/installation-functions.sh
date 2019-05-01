@@ -193,7 +193,61 @@ function install_catalogsources {
 
 function install_istio {
   if $CMD get ns "istio-system" 2>/dev/null; then
-    echo "Detected istio - skipping installation"
+      #    echo "Detected istio - skipping installation"
+      $CMD create ns istio-operator
+    if check_operatorgroups; then
+      cat <<-EOF | $CMD apply -f -
+	apiVersion: operators.coreos.com/v1
+	kind: OperatorGroup
+	metadata:
+	  name: istio-operator
+	  namespace: istio-operator
+	EOF
+    fi
+    cat <<-EOF | $CMD apply -f -
+	apiVersion: operators.coreos.com/v1alpha1
+	kind: Subscription
+	metadata:
+	  name: maistra
+	  namespace: istio-operator
+	spec:
+	  channel: alpha
+	  name: maistra
+	  source: maistra-operators
+	  sourceNamespace: $(olm_namespace)
+	EOF
+    wait_for_all_pods istio-operator
+
+    cat <<-EOF | $CMD apply -f -
+	apiVersion: istio.openshift.com/v1alpha1
+	kind: Installation
+	metadata:
+	  namespace: istio-operator
+	  name: istio-installation
+	spec:
+	  istio:
+	    authentication: false
+	    community: true
+	  kiali:
+	    username: admin
+	    password: admin
+	    prefix: kiali/
+	EOF
+    timeout 900 '$CMD get pods -n istio-system && [[ $($CMD get pods -n istio-system | grep openshift-ansible-istio-installer | grep -c Completed) -gt 0 ]]'
+
+    # Scale down unused services deployed by the istio operator. The
+    # jaeger pods will fail anyway due to the elasticsearch pod failing
+    # due to "max virtual memory areas vm.max_map_count [65530] is too
+    # low, increase to at least [262144]" which could be mitigated on
+    # minishift with:
+    #  minishift ssh "echo 'echo vm.max_map_count = 262144 >/etc/sysctl.d/99-elasticsearch.conf' | sudo sh"
+    $CMD scale -n istio-system --replicas=0 deployment/grafana
+    $CMD scale -n istio-system --replicas=0 deployment/jaeger-collector
+    $CMD scale -n istio-system --replicas=0 deployment/jaeger-query
+    $CMD scale -n istio-system --replicas=0 statefulset/elasticsearch
+
+    patch_istio_for_knative
+
   elif check_minikube; then
     echo "Detected minikube - incompatible with Maistra operator, so installing upstream istio."
     $CMD apply -f "https://github.com/knative/serving/releases/download/${KNATIVE_SERVING_VERSION}/istio-crds.yaml" && \
