@@ -192,10 +192,9 @@ function install_catalogsources {
 }
 
 function install_istio {
-#  if $CMD get ns "istio-system" 2>/dev/null; then
-#    echo "Detected istio - skipping installation"
-    #  elif check_minikube; then
-   if check_minikube; then 
+  if $CMD get ns "istio-system" 2>/dev/null; then
+    echo "Detected istio - skipping installation"
+  elif check_minikube; then
     echo "Detected minikube - incompatible with Maistra operator, so installing upstream istio."
     $CMD apply -f "https://github.com/knative/serving/releases/download/${KNATIVE_SERVING_VERSION}/istio-crds.yaml" && \
     $CMD apply -f "https://github.com/knative/serving/releases/download/${KNATIVE_SERVING_VERSION}/istio.yaml"
