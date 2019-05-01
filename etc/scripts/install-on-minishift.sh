@@ -31,6 +31,7 @@ if [ -z "${VM_DRIVER}" ]; then
 fi
 
 # blow away everything in the knative profile
+minishift profile set knative
 minishift profile delete knative --force >/dev/null 2>&1
 
 # configure knative profile
